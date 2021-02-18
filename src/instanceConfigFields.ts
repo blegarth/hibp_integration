@@ -1,4 +1,5 @@
 import { IntegrationInstanceConfigFieldMap } from '@jupiterone/integration-sdk-core';
+import { EmailAddress } from './types';
 
 /**
  * A type describing the configuration fields required to execute the
@@ -15,13 +16,29 @@ import { IntegrationInstanceConfigFieldMap } from '@jupiterone/integration-sdk-c
  * `instance.config` in a UI.
  */
 const instanceConfigFields: IntegrationInstanceConfigFieldMap = {
-  clientId: {
+  clientApiKey: {
     type: 'string',
-  },
-  clientSecret: {
-    type: 'string',
-    mask: true,
   },
 };
 
 export default instanceConfigFields;
+
+//Test emails that I will be using for the program
+export const emails: EmailAddress[] = [
+  {
+    id: '1',
+    name: 'legarth7%40gmail.com',
+  },
+  {
+    id: '2',
+    name: 'plegarth%40gmail.com',
+  },
+  {
+    id: '3',
+    name: 'legarthb20%40gmail.com',
+  },
+  {
+    id: '4',
+    name: 'legarth8%40gmail.com',
+  },
+];

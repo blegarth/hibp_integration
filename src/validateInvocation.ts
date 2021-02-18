@@ -11,9 +11,10 @@ export default async function validateInvocation(
 ) {
   const { config } = context.instance;
 
-  if (!config.clientId || !config.clientSecret) {
+  //Only need the Api key here
+  if (!config.clientApiKey) {
     throw new IntegrationValidationError(
-      'Config requires all of {clientId, clientSecret}',
+      'Config requires all of {clientApiKey}',
     );
   }
 

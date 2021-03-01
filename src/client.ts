@@ -1,36 +1,11 @@
-import http from 'http';
+import fetch, { Response } from 'node-fetch';
 
 import { IntegrationProviderAuthenticationError } from '@jupiterone/integration-sdk-core';
 
-import { IntegrationConfig } from './types';
+import { IntegrationConfig, HibpBreach, Finding } from './types';
+import { emails } from './instanceConfigFields';
 
 export type ResourceIteratee<T> = (each: T) => Promise<void> | void;
-
-// Providers often supply types with their API libraries.
-
-type AcmeUser = {
-  id: string;
-  name: string;
-};
-
-type AcmeGroup = {
-  id: string;
-  name: string;
-  users?: Pick<AcmeUser, 'id'>[];
-};
-
-// Those can be useful to a degree, but often they're just full of optional
-// values. Understanding the response data may be more reliably accomplished by
-// reviewing the API response recordings produced by testing the wrapper client
-// (below). However, when there are no types provided, it is necessary to define
-// opaque types for each resource, to communicate the records that are expected
-// to come from an endpoint and are provided to iterating functions.
-
-/*
-import { Opaque } from 'type-fest';
-export type AcmeUser = Opaque<any, 'AcmeUser'>;
-export type AcmeGroup = Opaque<any, 'AcmeGroup'>;
-*/
 
 /**
  * An APIClient maintains authentication state and provides an interface to
@@ -41,105 +16,95 @@ export type AcmeGroup = Opaque<any, 'AcmeGroup'>;
  * resources.
  */
 export class APIClient {
-  constructor(readonly config: IntegrationConfig) {}
+  private readonly clientApiKey: string;
+
+  constructor(readonly config: IntegrationConfig) {
+    this.clientApiKey = config.clientApiKey;
+  }
+
+  private withBaseUri(path: string): string {
+    return `https://haveibeenpwned.com/api/v3/${path}`;
+  }
+
+  //Decided to go with the requeest here because it was closer
+  //to what i knew
+  private async request(
+    uri: string,
+    method: 'GET' | 'HEAD' = 'GET',
+    body?: any,
+  ): Promise<Response> {
+    return await fetch(uri, {
+      method,
+      headers: {
+        Accept: 'application/json',
+        'hibp-api-key': `${this.clientApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: body || null,
+    });
+  }
 
   public async verifyAuthentication(): Promise<void> {
-    // TODO make the most light-weight request possible to validate
-    // authentication works with the provided credentials, throw an err if
-    // authentication fails
-    const request = new Promise((resolve, reject) => {
-      http.get(
-        {
-          hostname: 'localhost',
-          port: 443,
-          path: '/api/v1/some/endpoint?limit=1',
-          agent: false,
-          timeout: 10,
-        },
-        (res) => {
-          if (res.statusCode !== 200) {
-            reject(new Error('Provider authentication failed'));
-          } else {
-            resolve();
-          }
-        },
-      );
-    });
+    //tests by getting one breach
+    const response = await this.request(this.withBaseUri('breaches?limit=1'));
 
-    try {
-      await request;
-    } catch (err) {
+    if (!response.ok) {
       throw new IntegrationProviderAuthenticationError({
-        cause: err,
-        endpoint: 'https://localhost/api/v1/some/endpoint?limit=1',
-        status: err.status,
-        statusText: err.statusText,
+        cause: new Error('Provider authentication failed.'),
+        endpoint: 'https://haveibeenpwned.com/api/v3/breaches?limit=1',
+        status: response.status,
+        statusText: response.statusText,
       });
     }
   }
 
   /**
-   * Iterates each user resource in the provider.
+   * Iterates each user breach from the HIBP website.
    *
    * @param iteratee receives each resource to produce entities/relationships
    */
-  public async iterateUsers(
-    iteratee: ResourceIteratee<AcmeUser>,
+  public async iterateBreaches(
+    iteratee: ResourceIteratee<HibpBreach>,
   ): Promise<void> {
-    // TODO paginate an endpoint, invoke the iteratee with each record in the
-    // page
-    //
-    // The provider API will hopefully support pagination. Functions like this
-    // should maintain pagination state, and for each page, for each record in
-    // the page, invoke the `ResourceIteratee`. This will encourage a pattern
-    // where each resource is processed and dropped from memory.
+    const response = await this.request(this.withBaseUri('breaches'));
 
-    const users: AcmeUser[] = [
-      {
-        id: 'acme-user-1',
-        name: 'User One',
-      },
-      {
-        id: 'acme-user-2',
-        name: 'User Two',
-      },
-    ];
+    //This was a lot more straight forward than the Findings because
+    //I knew what was going to show in the response
+    const breaches: HibpBreach[] = await response.json();
 
-    for (const user of users) {
-      await iteratee(user);
+    for (const breach of breaches) {
+      await iteratee(breach);
     }
   }
 
   /**
-   * Iterates each group resource in the provider.
+   * Iterates each finding. I wasn't really sure what a finding was
+   * so I set it to be each time the email address has been pwned
+   * and used the email address for the API calls
    *
    * @param iteratee receives each resource to produce entities/relationships
    */
-  public async iterateGroups(
-    iteratee: ResourceIteratee<AcmeGroup>,
+  public async iterateFindings(
+    iteratee: ResourceIteratee<Finding>,
   ): Promise<void> {
-    // TODO paginate an endpoint, invoke the iteratee with each record in the
-    // page
-    //
-    // The provider API will hopefully support pagination. Functions like this
-    // should maintain pagination state, and for each page, for each record in
-    // the page, invoke the `ResourceIteratee`. This will encourage a pattern
-    // where each resource is processed and dropped from memory.
-
-    const groups: AcmeGroup[] = [
-      {
-        id: 'acme-group-1',
-        name: 'Group One',
-        users: [
-          {
-            id: 'acme-user-1',
-          },
-        ],
-      },
-    ];
-
-    for (const group of groups) {
-      await iteratee(group);
+    for (const new_email of emails) {
+      const response = await this.request(
+        this.withBaseUri(`breachedaccount/${new_email.name}`),
+      );
+      //this is needed because one of the emails did not have
+      //any breaches
+      if (response.ok) {
+        const breaches: Map<string, string>[] = await response.json();
+        for (let [_, value] of Object.entries(breaches)) {
+          const name: string = value['Name'];
+          //Changed it back to non url encoded email for better readibility
+          const email: string = new_email.name.replace('%40', '@');
+          //Made the finding more consistent with what the email
+          //entity would show
+          let newBreachFinding: Finding = { email, name };
+          await iteratee(newBreachFinding);
+        }
+      }
     }
   }
 }

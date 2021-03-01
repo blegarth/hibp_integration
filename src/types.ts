@@ -6,12 +6,35 @@ import { IntegrationInstanceConfig } from '@jupiterone/integration-sdk-core';
  */
 export interface IntegrationConfig extends IntegrationInstanceConfig {
   /**
-   * The provider API client ID used to authenticate requests.
+   * The provider API client key used to authenticate requests.
    */
-  clientId: string;
-
-  /**
-   * The provider API client secret used to authenticate requests.
-   */
-  clientSecret: string;
+  clientApiKey: string;
 }
+
+export type HibpBreach = {
+  name: string;
+  title: string;
+  domain: string;
+  breachDate: string;
+  addedDate: string;
+  modifiedDate: string;
+  pwnCount: number;
+  description: string;
+  logoPath: string;
+  dataClasses: string[];
+  isVerified: boolean;
+  isFabricated: boolean;
+  isSensitive: boolean;
+  isRetired: boolean;
+  isSpamList: boolean;
+};
+
+export type Finding = {
+  email: string;
+  name: string;
+};
+
+export type EmailAddress = {
+  id: string;
+  name: string;
+};
